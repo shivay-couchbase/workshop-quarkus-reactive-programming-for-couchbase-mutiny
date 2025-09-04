@@ -19,6 +19,11 @@ By the end of this exercise, you will understand:
 - Quarkus application running with Couchbase connection
 - Basic understanding of reactive programming with Mutiny
 - Familiarity with Couchbase operations
+- Couchbase Image - Docker / Podman
+```
+docker run -d --name couchbase-server -p 8091-8096:8091-8096 -p 11207:11207 -p 11210:11210 -p 18091-18096:18091-18096 couchbase/server:latest
+
+```
 
 ## Error Handling Methods
 
