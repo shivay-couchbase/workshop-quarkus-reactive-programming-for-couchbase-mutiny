@@ -7,6 +7,11 @@
 docker run -d --name couchbase-server -p 8091-8096:8091-8096 -p 11207:11207 -p 11210:11210 -p 18091-18096:18091-18096 couchbase/server:latest
 ```
 
+Install Quarkus wiht Couchbase
+```
+https://code.quarkus.io/?e=io.quarkiverse.couchbase%3Aquarkus-couchbase
+```
+
 # Get Started with Couchbase Quarkus SDK
 1. Create a new application
 We recommend creating a Quarkus app with the Couchbase Extension via code.quarkus.io. The link will automatically add the Couchbase and REST Quarkus extensions and generate a new sample application.
