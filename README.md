@@ -1,5 +1,4 @@
 # Workshop - Reactive Programming for Databases with Couchbase, Quarkus & Mutiny
-Workshop: Reactive Programming for Databases with Couchbase, Quarkus &amp; Mutiny
 
 # Get Started with Couchbase Quarkus SDK
 1. Create a new application
