@@ -140,6 +140,5 @@ The native-image will be located in the target directory of your module.
 <dependency>
     <groupId>io.smallrye.reactive</groupId>
     <artifactId>mutiny-reactor</artifactId>
-    <version>1.6.0</version>
 </dependency>
 ```
