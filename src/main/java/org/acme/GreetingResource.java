@@ -48,12 +48,16 @@ public class GreetingResource {
 @Inject
 Cluster cluster;
 
+
+
     @GET
     @Produces(MediaType.TEXT_PLAIN)
     @Path("health")
     public Uni<String> healthCheck() {
-        return Uni.createFrom().completionStage(cluster.async().ping())
-                .onItem().transform(result -> "Couchbase cluster is healthy!")
+        ReactiveCluster reactiveCluster = cluster.reactive();
+
+        Uni<PingResult> uni = FromMono.INSTANCE.from(reactiveCluster.ping());
+        return uni.onItem().transform(pr -> "Couchbase cluster is healthy!" + pr.exportToJson())
                 .onFailure().recoverWithItem(t -> "Cluster health check failed: " + t.getMessage());
     }
  
@@ -61,19 +65,16 @@ Cluster cluster;
 @Produces(MediaType.TEXT_PLAIN)
 @Path("simpleUpsert")
     public Uni<String> simpleUpsert() {
-        AsyncBucket bucket = cluster.bucket("default").async();
-        AsyncCollection collection = bucket.defaultCollection();
-        
-        String key = "simple-doc-" + System.currentTimeMillis();
-        JsonObject content = JsonObject.create()
-                .put("author", "mike2")
-                .put("title", "My Blog Post 2r4")
-                .put("timestamp", System.currentTimeMillis())
-                .put("documentId", key);
-
-        return Uni.createFrom().completionStage(collection.upsert(key, content))
-                .onItem().transform(result -> "Document upserted successfully! Key: " + key + ", Mutation token: " + result.mutationToken())
-                .onFailure().recoverWithItem(t -> "Document upsert failed: " + t.getMessage());
+        ReactiveBucket bucket = cluster.bucket("default").reactive();
+        ReactiveCollection collection = bucket.defaultCollection();
+        Uni<JsonObject> u = Uni.createFrom().item(() ->
+                JsonObject.create()
+                        .put("author", "mike2")
+                        .put("title", "My Blog Post 2r4")
+                        .put("timestamp", System.currentTimeMillis()));
+        Uni<MutationResult> u1 = u.flatMap(jo -> FromMono.INSTANCE.from(collection.upsert("document-key",jo)));
+        return u1.onItem().transform(result -> "Document upserted successfully! Mutation token: " + result.mutationToken())
+                 .onFailure().recoverWithItem(error -> "Document upsert failed: " + error.getMessage());
     }
 
     @POST
@@ -81,50 +82,21 @@ Cluster cluster;
     @Produces(MediaType.TEXT_PLAIN)
     @Path("reactiveUpsert")
     public Uni<String> reactiveUpsert(String documentJson) {
-        AsyncBucket bucket = cluster.bucket("default").async();
-        AsyncCollection collection = bucket.defaultCollection();
-        String key = "reactive-doc-" + System.currentTimeMillis();
-        
-        JsonObject content = JsonObject.fromJson(documentJson)
-                .put("createdAt", System.currentTimeMillis())
-                .put("documentId", key);
 
-        return Uni.createFrom().completionStage(collection.upsert(key, content))
-                .onItem().transform(result -> "Document upserted successfully - Key: " + key + ", Mutation token: " + result.mutationToken() + ", CAS: " + result.cas())
+        ReactiveBucket bucket = cluster.bucket("default").reactive();
+        ReactiveCollection collection = bucket.defaultCollection();
+        String key = "doc-" + System.currentTimeMillis();
+
+        Uni<JsonObject> u = Uni.createFrom().item(() -> {
+            // Add metadata
+            return JsonObject.fromJson(documentJson)
+                    .put("createdAt", System.currentTimeMillis())
+                    .put("documentId", key);
+
+        }).onFailure().invoke(err -> LOG.error("Error occurred while parsing JSON string", err));
+        Uni<MutationResult> u1 = u.flatMap(jo -> FromMono.INSTANCE.from(collection.upsert("document-key",jo)));
+        return u1.onItem().transform(result -> "Document upserted successfully - Key: " + key + ", Mutation token: " + result.mutationToken() + ", CAS: " + result.cas())
                 .onFailure().recoverWithItem(error -> "Document upsert failed: " + error.getMessage());
-    }
-
-    @GET
-    @Produces(MediaType.APPLICATION_JSON)
-    @Path("list-documents")
-    public Uni<String> listDocuments() {
-        AsyncBucket bucket = cluster.bucket("default").async();
-        String query = "SELECT META().id, * FROM `default` WHERE META().id LIKE '%doc-%' LIMIT 10";
-        
-        return Uni.createFrom().completionStage(cluster.async().query(query))
-                .onItem().transform(result -> {
-                    StringBuilder response = new StringBuilder();
-                    response.append("{\n  \"documents\": [\n");
-                    
-                    List<JsonObject> rows = result.rowsAsObject();
-                    for (int i = 0; i < rows.size(); i++) {
-                        JsonObject row = rows.get(i);
-                        response.append("    {\n");
-                        response.append("      \"id\": \"").append(row.getString("id")).append("\",\n");
-                        response.append("      \"content\": ").append(row.getObject("default").toString()).append("\n");
-                        if (i < rows.size() - 1) {
-                            response.append("    },\n");
-                        } else {
-                            response.append("    }\n");
-                        }
-                    }
-                    response.append("  ],\n");
-                    response.append("  \"total\": ").append(rows.size()).append("\n");
-                    response.append("}\n");
-                    
-                    return response.toString();
-                })
-                .onFailure().recoverWithItem(error -> "{\"error\": \"Query failed: " + error.getMessage() + "\"}");
     }
 
     @GET
@@ -138,51 +110,43 @@ Cluster cluster;
     @Produces(MediaType.TEXT_PLAIN)
     @Path("clusterInfo")
     public Uni<String> getClusterInfo() {
-        return Uni.createFrom().completionStage(cluster.async().diagnostics())
-                .onItem().transform(info -> "Cluster diagnostics retrieved successfully")
-                .onFailure().recoverWithItem(t -> "Failed to get cluster info: " + t.getMessage());
+        AsyncCluster asyncCluster = cluster.async();
+        return Uni.createFrom().completionStage(asyncCluster.diagnostics())
+                .onItem().transform(result -> "Cluster diagnostics retrieved successfully: " + result.exportToJson())
+                .onFailure().recoverWithItem(error -> "Failed to get cluster info: " + error.getMessage());
     }
 
     @GET
     @Produces(MediaType.TEXT_PLAIN)
     @Path("document/{key}")
     public Uni<String> getDocument(@PathParam("key") String key) {
-        AsyncBucket bucket = cluster.bucket("default").async();
-        AsyncCollection collection = bucket.defaultCollection();
-        
-        return Uni.createFrom().completionStage(collection.get(key))
-                .onItem().transform(result -> {
-                try {
-                    JsonObject content = result.contentAsObject();
-                    return "Document found - Key: " + key + ", CAS: " + result.cas() + ", Content: " + content.toString();
-                } catch (Exception e) {
-                    LOG.error("Error processing document content", e);
-                    return "Error processing document: " + e.getMessage();
-                }
-            })
-                .onFailure().recoverWithItem(t -> "Document retrieval failed: " + t.getMessage());
+        ReactiveBucket bucket = cluster.bucket("default").reactive();
+        ReactiveCollection collection = bucket.defaultCollection();
+
+        Uni<GetResult> resultUni = FromMono.INSTANCE.from(collection.get(key)).onFailure(DocumentNotFoundException.class).recoverWithItem("The Document was not found");
+        return resultUni.onItem().transform(result -> "Document found - Key: " + key + ", CAS: " + result.cas() + ", Content: " + result.contentAsObject())
+                .onFailure().invoke(err -> LOG.error("And unkown error occured: " + err.getMessage()));
     }
 
     @DELETE
     @Path("document/{key}")
     public Uni<JsonObject> deleteDocument(@PathParam("key") String key) {
-        AsyncBucket bucket = cluster.bucket("default").async();
-        AsyncCollection collection = bucket.defaultCollection();
-        
-        return Uni.createFrom().completionStage(collection.remove(key))
-                .map(mr -> JsonObject.create()
-                        .put("message", "Document deleted successfully")
-                        .put("key", key)
-                        .put("mutationToken", mr.mutationToken().toString())
-                        .put("timestamp", System.currentTimeMillis()))
-                .onFailure().recoverWithItem(error ->
-                        JsonObject.create()
-                        .put("error", "Document deletion failed: " + error.getMessage())
-                        .put("key", key)
-                        .put("timestamp", System.currentTimeMillis())
+        ReactiveBucket bucket = cluster.bucket("default").reactive();
+        ReactiveCollection collection = bucket.defaultCollection();
+
+        Uni<MutationResult> resultUni = FromMono.INSTANCE.from(collection.remove(key));
+        return resultUni.map(mr -> JsonObject.create()
+                .put("message", "Document deleted successfully")
+                .put("key", key)
+                .put("mutationToken", mr.mutationToken().toString())
+                .put("timestamp", System.currentTimeMillis()))
+            .onFailure().recoverWithItem(error ->
+                    JsonObject.create()
+                            .put("error", "Document deletion failed: " + error.getMessage())
+                            .put("key", key)
+                            .put("timestamp", System.currentTimeMillis())
                 );
     }
-
     
     // Helper methods for validation
     private boolean isValidEmail(String email) {
