@@ -95,6 +95,39 @@ Cluster cluster;
     }
 
     @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    @Path("list-documents")
+    public Uni<String> listDocuments() {
+        AsyncBucket bucket = cluster.bucket("default").async();
+        String query = "SELECT META().id, * FROM `default` WHERE META().id LIKE '%doc-%' LIMIT 10";
+        
+        return Uni.createFrom().completionStage(cluster.async().query(query))
+                .onItem().transform(result -> {
+                    StringBuilder response = new StringBuilder();
+                    response.append("{\n  \"documents\": [\n");
+                    
+                    List<JsonObject> rows = result.rowsAsObject();
+                    for (int i = 0; i < rows.size(); i++) {
+                        JsonObject row = rows.get(i);
+                        response.append("    {\n");
+                        response.append("      \"id\": \"").append(row.getString("id")).append("\",\n");
+                        response.append("      \"content\": ").append(row.getObject("default").toString()).append("\n");
+                        if (i < rows.size() - 1) {
+                            response.append("    },\n");
+                        } else {
+                            response.append("    }\n");
+                        }
+                    }
+                    response.append("  ],\n");
+                    response.append("  \"total\": ").append(rows.size()).append("\n");
+                    response.append("}\n");
+                    
+                    return response.toString();
+                })
+                .onFailure().recoverWithItem(error -> "{\"error\": \"Query failed: " + error.getMessage() + "\"}");
+    }
+
+    @GET
     @Produces(MediaType.TEXT_PLAIN)
     @Path("test-json")
     public Uni<String> testJsonResponse() {
