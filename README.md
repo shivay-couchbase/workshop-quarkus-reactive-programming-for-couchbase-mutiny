@@ -40,9 +40,34 @@ dependencies {
 ## 2. Configure Your Application
 Add your connection string and credentials in application.properties located at src/main/resources/application.properties:
 ```
+# Couchbase Configuration
+# Update these values to match your Couchbase cluster setup
 quarkus.couchbase.connection-string=couchbase://localhost
 quarkus.couchbase.username=Administrator
 quarkus.couchbase.password=password
+
+# Optional Couchbase Configuration
+quarkus.couchbase.bucket=default
+quarkus.couchbase.scope=_default
+quarkus.couchbase.collection=_default
+
+quarkus.couchbase.connection-timeout=1s
+quarkus.couchbase.kv-timeout=1s
+# Completely disable Couchbase Dev Service (since Docker is not available)
+quarkus.couchbase.devservices.enabled=false
+quarkus.couchbase.devservices.container-env.COUCHBASE_ACME=disabled
+quarkus.couchbase.devservices.startup-timeout=0
+quarkus.couchbase.devservices.port=0
+
+# Force disable all dev services
+quarkus.devservices.enabled=false
+
+# Application Configuration
+quarkus.http.port=8080
+quarkus.log.level=DEBUG
+quarkus.log.category."org.acme".level=DEBUG
+quarkus.log.category."com.couchbase".level=DEBUG
+
 ```
 The extension automatically starts a TestContainer, which can be disabled if desired with:
 ```
