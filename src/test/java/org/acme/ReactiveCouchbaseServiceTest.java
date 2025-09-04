@@ -1,12 +1,13 @@
 package org.acme;
 
+import com.couchbase.client.core.error.DocumentNotFoundException;
+import com.couchbase.client.java.Cluster;
 import com.couchbase.client.java.json.JsonObject;
 import io.quarkus.test.junit.QuarkusTest;
-import reactor.core.publisher.Mono;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.BeforeEach;
 import jakarta.inject.Inject;
-import com.couchbase.client.java.Cluster;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -65,12 +66,11 @@ public class ReactiveCouchbaseServiceTest {
         assertNotNull(upsertResult);
         
         // Test the reactive operation
-        upsertResult.block()
-            .let(result -> {
-                assertNotNull(result.mutationToken());
-                assertNotNull(result.cas());
-                return true;
-            });
+        var result = upsertResult.block();
+
+        assertNotNull(result.mutationToken());
+        assertNotNull(result.cas());
+
     }
 
     @Test
@@ -81,17 +81,16 @@ public class ReactiveCouchbaseServiceTest {
         String key = "test-retrieve-" + System.currentTimeMillis();
         
         // First upsert a document
-        reactiveCollection.upsert(key, testDocument)
-            .flatMap(result -> reactiveCollection.get(key))
-            .block()
-            .let(retrievedDoc -> {
-                assertEquals("Test Author", retrievedDoc.contentAsObject().getString("author"));
-                assertEquals("Test Document", retrievedDoc.contentAsObject().getString("title"));
-                return true;
-            });
+        var retrievedDoc = reactiveCollection.upsert(key, testDocument)
+            .flatMap(result -> reactiveCollection.get(key)).block();
+
+        assertEquals("Test Author", retrievedDoc.contentAsObject().getString("author"));
+        assertEquals("Test Document", retrievedDoc.contentAsObject().getString("title"));
+;
     }
 
     @Test
+
     void testDocumentDeletion() {
         var reactiveBucket = cluster.bucket("default").reactive();
         var reactiveCollection = reactiveBucket.defaultCollection();
@@ -99,15 +98,12 @@ public class ReactiveCouchbaseServiceTest {
         String key = "test-delete-" + System.currentTimeMillis();
         
         // Upsert, then delete, then verify deletion
+        assertThrows(DocumentNotFoundException.class, () ->
         reactiveCollection.upsert(key, testDocument)
-            .flatMap(result -> reactiveCollection.remove(key))
+            .flatMap(r -> reactiveCollection.remove(key))
             .then(reactiveCollection.get(key))
-            .block()
-            .let(result -> {
-                // Should be empty after deletion
-                assertNull(result);
-                return true;
-            });
+
+            .block(), "Should throw DocNotFound");
     }
 
     @Test
@@ -124,14 +120,11 @@ public class ReactiveCouchbaseServiceTest {
         assertFalse(exists);
         
         // Test existing document
-        reactiveCollection.upsert(key, testDocument)
+        var existsResult = reactiveCollection.upsert(key, testDocument)
             .flatMap(result -> reactiveCollection.exists(key))
             .map(result -> result.exists())
-            .block()
-            .let(existsResult -> {
-                assertTrue(existsResult);
-                return true;
-            });
+            .block();
+        assertTrue(existsResult);
     }
 
     @Test
@@ -143,13 +136,13 @@ public class ReactiveCouchbaseServiceTest {
         
         assertNotNull(diagnostics);
         
-        diagnostics.block()
-            .let(result -> {
-                assertNotNull(result.id());
-                assertNotNull(result.endpoints());
-                assertNotNull(result.state());
-                return true;
-            });
+        var result = diagnostics.block();
+
+        assertNotNull(result.id());
+        assertNotNull(result.endpoints());
+        assertNotNull(result.state());
+
+
     }
 
     @Test
@@ -170,13 +163,11 @@ public class ReactiveCouchbaseServiceTest {
             reactiveCollection.upsert(key2, doc2);
         
         // Combine operations
-        Mono.zip(op1, op2)
-            .block()
-            .let(tuple -> {
-                assertNotNull(tuple.getT1().mutationToken());
-                assertNotNull(tuple.getT2().mutationToken());
-                return true;
-            });
+        var tuple = Mono.zip(op1, op2)
+            .block();
+        assertNotNull(tuple.getT1().mutationToken());
+        assertNotNull(tuple.getT2().mutationToken());
+
     }
 
     @Test
